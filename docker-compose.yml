@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+    kibana:
+        build:
+            context: kibana/
+            args:
+                ELK_VERSION: $ELK_VERSION
+        volumes:
+            - type: bind
+              source: ./kibana/kibana.yml
+              target: /usr/share/kibana/config/kibana.yml
+              read_only: true
+        ports:
+            - "5601:5601"
+        networks:
+            - elk-stream
+        depends_on:
+            - elasticsearch
+
+    elasticsearch:
+        build:
+            context: elasticsearch/
+            args:
+                ELK_VERSION: $ELK_VERSION
+        volumes: 
+            - type: bind
+              source: ./elasticsearch/elasticsearch.yml
+              target: /usr/share/elasticsearch/config/elasticsearch.yml
+              read_only: true
+            - type: volume
+              source: elasticsearch
+              target: /usr/share/elasticsearch/data
+        ports: 
+            - "9200:9200"
+            - "9300:9300"
+        environment: 
+            ES_JAVA_OPTS: "-Xmx256m -Xms256m"
+            discovery.type: single-node
+        networks:
+            - elk-stream
+    
+    logstash:
+        build:
+            context: logstash/
+            args:
+                ELK_VERSION: $ELK_VERSION
+        volumes:
+            - type: bind
+              source: ./logstash/logstash.yml
+              target: /usr/share/logstash/config/logstash.yml
+              read_only: true
+            - type: bind
+              source: ./logstash/pipeline
+              target: /usr/share/logstash/pipeline
+              read_only: true
+        ports: 
+            - "5044:5044"
+            - "5000:5000/tcp"
+            - "5000:5000/udp"
+            - "9600:9600"
+        environment: 
+            LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+        networks:
+            - elk-stream
+        depends_on:
+            - elasticsearch
+            - postgres_input
+            - postgres_output
+    
+    postgres_input:
+        image: postgres:9.6-alpine
+        container_name: postgres_input
+        depends_on:
+            - postgres_output
+        ports:
+            - 5432:5432
+        networks:
+            - elk-stream
+        environment:
+            POSTGRES_DB: test_input_db
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: pgadmin
+
+    postgres_output:
+        image: postgres:9.6-alpine
+        container_name: postgres_output
+        ports:
+            - 5433:5432
+        networks:
+            - elk-stream
+        environment:
+            POSTGRES_DB: test_output_db
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: pgadmin                
+    
+
+networks:
+    elk-stream:
+        driver: bridge
+
+volumes:
+    elasticsearch:
